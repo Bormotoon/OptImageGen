@@ -6,11 +6,12 @@ from PIL import Image
 import threading
 import queue
 
+
 class ImageConverterApp:
     def __init__(self, master):
         self.master = master
         self.master.title("Image Converter")
-        self.master.geometry("900x700")  # Увеличиваем ширину для дополнительного столбца
+        self.master.geometry("1200x700")  # Увеличиваем ширину для дополнительного столбца
 
         # Переменные для хранения путей и настроек
         self.source_image_paths = tk.StringVar()
@@ -21,6 +22,8 @@ class ImageConverterApp:
             "PNG": tk.BooleanVar(value=True),
             "WEBP": tk.BooleanVar(value=True)
         }
+        self.generate_html = tk.BooleanVar()
+        self.add_lazy_loading = tk.BooleanVar()
 
         # Словарь для сопоставления путей файлов с ID элементов Treeview
         self.file_to_item = {}
@@ -38,9 +41,13 @@ class ImageConverterApp:
         self.master.after(100, self.process_queue)
 
     def create_widgets(self):
-        # ========== Выбор исходного файла ==========
-        frame_source = tk.LabelFrame(self.master, text="Шаг 1: Исходное изображение")
-        frame_source.pack(fill="x", padx=10, pady=5, ipady=5)
+        # Parent frame for source selection and HTML options side by side
+        frame_source_html = tk.Frame(self.master)
+        frame_source_html.pack(fill="x", padx=10, pady=5, ipady=5)
+
+        # Frame for source selection
+        frame_source = tk.LabelFrame(frame_source_html, text="Исходные изображения")
+        frame_source.pack(side="left", fill="both", expand=True, padx=5, pady=5)
 
         lbl_source = tk.Label(frame_source, text="Файлы:")
         lbl_source.pack(side="left", padx=5, pady=5)
@@ -51,8 +58,30 @@ class ImageConverterApp:
         btn_browse_source = tk.Button(frame_source, text="Обзор...", command=self.browse_source_image)
         btn_browse_source.pack(side="left", padx=5, pady=5)
 
+        # Frame for HTML options
+        frame_html_options = tk.LabelFrame(frame_source_html, text="HTML Опции")
+        frame_html_options.pack(side="left", fill="both", expand=True, padx=5, pady=5)
+
+        # Checkbox for "Generate HTML code for images"
+        chk_generate_html = tk.Checkbutton(frame_html_options, text="Генерировать HTML-код для изображений",
+                                           variable=self.generate_html,
+                                           command=self.update_html_preview_after_selection)
+        chk_generate_html.pack(anchor='w', padx=5, pady=5)
+
+        # Checkbox for "Add Lazy Loading"
+        chk_lazy_loading = tk.Checkbutton(frame_html_options, text="Добавить Lazy Loading",
+                                          variable=self.add_lazy_loading)
+        chk_lazy_loading.pack(anchor='w', padx=5, pady=5)
+
+        # Text widget for HTML code preview
+        lbl_html_preview = tk.Label(frame_html_options, text="Предпросмотр HTML-кода:")
+        lbl_html_preview.pack(anchor='w', padx=5, pady=(10, 0))
+
+        self.text_html_preview = tk.Text(frame_html_options, height=15, width=50, state='disabled', wrap='word')
+        self.text_html_preview.pack(fill='both', expand=True, padx=5, pady=5)
+
         # ========== Выбор папки для сохранения ==========
-        frame_output = tk.LabelFrame(self.master, text="Шаг 2: Папка для сохранения результатов")
+        frame_output = tk.LabelFrame(self.master, text="Папка для сохранения результатов")
         frame_output.pack(fill="x", padx=10, pady=5, ipady=5)
 
         lbl_output_folder = tk.Label(frame_output, text="Папка:")
@@ -65,7 +94,7 @@ class ImageConverterApp:
         btn_browse_output.pack(side="left", padx=5, pady=5)
 
         # ========== Форматы ==========
-        frame_formats = tk.LabelFrame(self.master, text="Шаг 3: Выберите форматы")
+        frame_formats = tk.LabelFrame(self.master, text="Выберите форматы")
         frame_formats.pack(fill="x", padx=10, pady=5, ipady=5)
 
         for fmt in self.selected_formats:
@@ -78,7 +107,7 @@ class ImageConverterApp:
             cb.pack(side="left", padx=5, pady=5)
 
         # ========== Размеры (ширины) ==========
-        frame_sizes = tk.LabelFrame(self.master, text="Шаг 4: Укажите нужные ширины (через запятую)")
+        frame_sizes = tk.LabelFrame(self.master, text="Укажите нужные ширины (через запятую)")
         frame_sizes.pack(fill="x", padx=10, pady=5, ipady=5)
 
         lbl_sizes = tk.Label(frame_sizes, text="Ширины:")
@@ -92,7 +121,8 @@ class ImageConverterApp:
         frame_convert = tk.Frame(self.master)
         frame_convert.pack(pady=10)
 
-        self.btn_convert = tk.Button(frame_convert, text="Конвертировать!", command=self.start_conversion, bg="#4CAF50", fg="#ffffff")
+        self.btn_convert = tk.Button(frame_convert, text="Конвертировать!", command=self.start_conversion, bg="#4CAF50",
+                                     fg="#ffffff")
         self.btn_convert.pack(side="left", padx=5, pady=5)
 
         # Метка для отображения общего статуса конвертации
@@ -117,7 +147,7 @@ class ImageConverterApp:
         self.tree_preview = ttk.Treeview(frame_preview, columns=columns, show='headings', selectmode='browse')
         self.tree_preview.heading("File Path", text="Путь к файлу")
         self.tree_preview.heading("Status", text="Статус")
-        self.tree_preview.column("File Path", anchor="w", width=700)
+        self.tree_preview.column("File Path", anchor="w", width=900)
         self.tree_preview.column("Status", anchor="center", width=100)
 
         scrollbar = ttk.Scrollbar(frame_preview, orient="vertical", command=self.tree_preview.yview)
@@ -145,6 +175,9 @@ class ImageConverterApp:
             first_file_dir = os.path.dirname(file_paths[0])
             self.output_folder_path.set(first_file_dir)
             self.update_preview()
+            # Генерация HTML-кода для первого изображения, если опция выбрана
+            if self.generate_html.get():
+                self.generate_html_preview_for_first_image(file_paths[0])
 
     def browse_output_folder(self):
         """Выбор папки для сохранения результатов"""
@@ -205,6 +238,73 @@ class ImageConverterApp:
         self.tree_preview.tag_configure("evenrow", background="#ffffff")
         self.tree_preview.tag_configure("oddrow", background="#f0f0f0")
 
+    def generate_html_preview_for_first_image(self, source_path):
+        """Генерация HTML-кода для первого исходного изображения и отображение в предпросмотре"""
+        output_folder = self.output_folder_path.get()
+        widths_input = self.widths_string.get()
+        selected_formats_list = [fmt for fmt, var in self.selected_formats.items() if var.get()]
+
+        if not os.path.isdir(output_folder):
+            return  # Папка не существует
+
+        try:
+            widths = sorted([int(w.strip()) for w in widths_input.split(",") if w.strip().isdigit()])
+            if not widths:
+                raise ValueError
+        except ValueError:
+            return  # Некорректные размеры
+
+        base_name = os.path.splitext(os.path.basename(source_path))[0]
+        html_code = ""
+        srcset_entries = []
+        smallest_image = ""
+        alt_text = base_name.replace("-", " ")
+        sizes_attr = "(max-width: 480px) 100px, (max-width: 768px) 120px, 120px"
+        loading_attr = ' loading="lazy"' if self.add_lazy_loading.get() else ""
+
+        # Собираем srcset
+        for width in widths:
+            for fmt in selected_formats_list:
+                ext = fmt.lower()
+                if fmt == "JPEG":
+                    ext = "jpg"  # Используем .jpg для JPEG
+                filename = f"{base_name}-{width}w.{ext}"
+                file_path = os.path.join(output_folder, filename)
+                if os.path.isfile(file_path):
+                    srcset_entries.append(f"{file_path} {width}w")
+                else:
+                    # Предполагаем, что файл будет создан после конвертации
+                    srcset_entries.append(f"{filename} {width}w")
+                    if not smallest_image or width < smallest_image[0]:
+                        smallest_image = (width, filename)
+
+        # Если файлы ещё не созданы, используем первый из предполагаемых
+        if not srcset_entries:
+            return
+
+        # Определяем src как самый маленький
+        if smallest_image:
+            src = smallest_image[1]
+        else:
+            src = srcset_entries[0].split(" ")[0]
+
+        srcset_str = ",\n    ".join(srcset_entries)
+
+        html_code = f'''<img 
+    src="{src}" 
+    srcset="
+        {srcset_str}
+    "
+    sizes="{sizes_attr}"
+    alt="{alt_text}" 
+    class="profile-image"{loading_attr}>
+'''
+        # Обновляем предпросмотр HTML-кода
+        self.text_html_preview.config(state='normal')
+        self.text_html_preview.delete(1.0, tk.END)
+        self.text_html_preview.insert(tk.END, html_code)
+        self.text_html_preview.config(state='disabled')
+
     def start_conversion(self):
         """Запуск конвертации в отдельном потоке"""
         if self.conversion_in_progress:
@@ -222,8 +322,10 @@ class ImageConverterApp:
         # Отключаем кнопку конвертации, чтобы предотвратить повторные нажатия
         self.btn_convert.config(state='disabled')
 
-        # Очищаем статусные метки
-        self.lbl_conversion_status.config(text="")
+        # Очищаем статусные метки и HTML-превью
+        self.lbl_conversion_status.config(text="Конвертация началась...")
+        if self.generate_html.get():
+            self.html_code_full = ""  # Сбрасываем накопленный HTML-код
 
         # Запускаем рабочий поток
         worker = threading.Thread(target=self.convert_images_thread, daemon=True)
@@ -237,7 +339,7 @@ class ImageConverterApp:
 
         # Обрабатываем размеры
         try:
-            widths = [int(w.strip()) for w in widths_input.split(",") if w.strip().isdigit()]
+            widths = sorted([int(w.strip()) for w in widths_input.split(",") if w.strip().isdigit()])
             if not widths:
                 raise ValueError
         except ValueError:
@@ -253,12 +355,15 @@ class ImageConverterApp:
             return
 
         generated_files = []  # Список для хранения путей сгенерированных файлов
+        html_code_full = ""  # Накопленный HTML-код
 
         for source_path in source_paths:
             try:
                 with Image.open(source_path) as img:
                     # Получаем имя файла без расширения
                     base_name = os.path.splitext(os.path.basename(source_path))[0]
+
+                    generated_files_current = {}  # Для хранения сгенерированных файлов текущего изображения
 
                     for width in widths:
                         # Вычисляем новую высоту (с сохранением пропорций)
@@ -296,16 +401,58 @@ class ImageConverterApp:
                                 resized_img.save(out_path, fmt_pillow, **save_params)
                                 generated_files.append(out_path)
                                 print(f"Сохранено: {out_path}")
-                                # Отправляем сообщение об успешной конвертации
+                                # Обновляем статус в Treeview
                                 self.queue.put(("update_status", out_path, "✔"))
+
+                                # Сбор данных для HTML-кода
+                                if self.generate_html.get():
+                                    if base_name not in generated_files_current:
+                                        generated_files_current[base_name] = []
+                                    generated_files_current[base_name].append((width, out_filename))
+
                             except Exception as e:
                                 print(f"Ошибка сохранения файла {out_path}: {e}")
-                                # Отправляем сообщение об ошибке конвертации
+                                # Обновляем статус в Treeview
                                 self.queue.put(("update_status", out_path, "✖"))
+
+                    # Генерация HTML-кода для текущего изображения
+                    if self.generate_html.get():
+                        for base_name, files in generated_files_current.items():
+                            # Сортируем файлы по ширине
+                            sorted_files = sorted(files, key=lambda x: x[0])
+                            srcset_entries = ",\n    ".join(
+                                [f"{filename} {width}w" for width, filename in sorted_files])
+                            smallest_image = sorted_files[0][1]
+                            alt_text = base_name.replace("-", " ")
+                            sizes_attr = "(max-width: 480px) 100px, (max-width: 768px) 120px, 120px"
+                            loading_attr = ' loading="lazy"' if self.add_lazy_loading.get() else ""
+
+                            html_code = f'''<img 
+    src="{smallest_image}" 
+    srcset="
+        {srcset_entries}
+    "
+    sizes="{sizes_attr}"
+    alt="{alt_text}" 
+    class="profile-image"{loading_attr}>
+'''
+                            html_code_full += html_code + "\n"
 
             except Exception as e:
                 print(f"Не удалось обработать файл {source_path}: {e}")
                 self.queue.put(("error", f"Не удалось обработать файл {source_path}: {e}"))
+
+        if self.generate_html.get() and html_code_full:
+            # Записываем HTML-код в TXT-файл
+            txt_filename = "generated_html_code.txt"
+            txt_path = os.path.join(output_folder, txt_filename)
+            try:
+                with open(txt_path, 'w', encoding='utf-8') as f:
+                    f.write(html_code_full)
+                print(f"HTML-код записан в файл: {txt_path}")
+            except Exception as e:
+                print(f"Ошибка записи HTML-кода в файл: {e}")
+                self.queue.put(("error", f"Ошибка записи HTML-кода в файл: {e}"))
 
         if generated_files:
             self.queue.put(("conversion_complete", "Конвертация завершена успешно."))
@@ -323,6 +470,9 @@ class ImageConverterApp:
                 if message[0] == "update_status":
                     _, file_path, status_symbol = message
                     self.update_file_status(file_path, status_symbol)
+                elif message[0] == "update_html_preview":
+                    _, html_code = message
+                    self.update_html_preview(html_code)
                 elif message[0] == "error":
                     _, error_msg = message
                     messagebox.showerror("Ошибка", error_msg)
@@ -343,10 +493,92 @@ class ImageConverterApp:
         if item_id:
             self.tree_preview.set(item_id, column="Status", value=status_symbol)
 
+    def update_html_preview_after_selection(self):
+        """Генерация HTML-кода для первого исходного изображения при изменении опций"""
+        if self.generate_html.get() and self.source_image_paths.get():
+            first_image_path = self.source_image_paths.get().split(", ")[0]
+            self.generate_html_preview_for_first_image(first_image_path)
+        else:
+            self.clear_html_preview()
+
+    def generate_html_preview_for_first_image(self, source_path):
+        """Генерация HTML-кода для первого исходного изображения и отображение в предпросмотре"""
+        output_folder = self.output_folder_path.get()
+        widths_input = self.widths_string.get()
+        selected_formats_list = [fmt for fmt, var in self.selected_formats.items() if var.get()]
+
+        if not os.path.isdir(output_folder):
+            return  # Папка не существует
+
+        try:
+            widths = sorted([int(w.strip()) for w in widths_input.split(",") if w.strip().isdigit()])
+            if not widths:
+                raise ValueError
+        except ValueError:
+            return  # Некорректные размеры
+
+        base_name = os.path.splitext(os.path.basename(source_path))[0]
+        html_code = ""
+        srcset_entries = []
+        smallest_image = ""
+        alt_text = base_name.replace("-", " ")
+        sizes_attr = "(max-width: 480px) 100px, (max-width: 768px) 120px, 120px"
+        loading_attr = ' loading="lazy"' if self.add_lazy_loading.get() else ""
+
+        # Собираем srcset
+        for width in widths:
+            for fmt in selected_formats_list:
+                ext = fmt.lower()
+                if fmt == "JPEG":
+                    ext = "jpg"  # Используем .jpg для JPEG
+                filename = f"{base_name}-{width}w.{ext}"
+                file_path = os.path.join(output_folder, filename)
+                srcset_entries.append(f"{filename} {width}w")
+                if not smallest_image or width < smallest_image[0]:
+                    smallest_image = (width, filename)
+
+        # Определяем src как самый маленький
+        if smallest_image:
+            src = smallest_image[1]
+        else:
+            src = srcset_entries[0].split(" ")[0]
+
+        srcset_str = ",\n    ".join(srcset_entries)
+
+        html_code = f'''<img 
+    src="{src}" 
+    srcset="
+        {srcset_str}
+    "
+    sizes="{sizes_attr}"
+    alt="{alt_text}" 
+    class="profile-image"{loading_attr}>
+'''
+        # Обновляем предпросмотр HTML-кода
+        self.text_html_preview.config(state='normal')
+        self.text_html_preview.delete(1.0, tk.END)
+        self.text_html_preview.insert(tk.END, html_code)
+        self.text_html_preview.config(state='disabled')
+
+    def update_html_preview(self, html_code):
+        """Обновление поля предпросмотра HTML-кода"""
+        self.text_html_preview.config(state='normal')
+        self.text_html_preview.delete(1.0, tk.END)
+        self.text_html_preview.insert(tk.END, html_code)
+        self.text_html_preview.config(state='disabled')
+
+    def clear_html_preview(self):
+        """Очистка поля предпросмотра HTML-кода"""
+        self.text_html_preview.config(state='normal')
+        self.text_html_preview.delete(1.0, tk.END)
+        self.text_html_preview.config(state='disabled')
+
+
 def main():
     root = tk.Tk()
     app = ImageConverterApp(root)
     root.mainloop()
+
 
 if __name__ == "__main__":
     main()
