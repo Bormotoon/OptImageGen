@@ -81,3 +81,9 @@ optimagegen/
 ├── image_converter.py
 ├── README.md
 ```
+
+## Поддержать проект
+
+OptImageGen бесплатен. Если он ускорил ваши страницы — поддержите разработку:
+
+[![Поддержать проект](docs/images/donate_banner.png)](https://dalink.to/bormotoon)
